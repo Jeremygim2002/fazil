@@ -1,10 +1,69 @@
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
+import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+import { auth } from '../../firebaseConfig';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
   const router = useRouter();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const apiUrl = useMemo(
+    () => process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000',
+    [],
+  );
+
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    expoClientId: process.env.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    scopes: ['profile', 'email'],
+  });
+
+  useEffect(() => {
+    const runLogin = async () => {
+      if (response?.type !== 'success') {
+        return;
+      }
+
+      const { id_token: idToken, access_token: accessToken } = response.params;
+      if (!idToken) {
+        Alert.alert('Login fallido', 'No se recibio el token de Google.');
+        return;
+      }
+
+      try {
+        setIsSubmitting(true);
+        const credential = GoogleAuthProvider.credential(idToken, accessToken);
+        await signInWithCredential(auth, credential);
+
+        const apiResponse = await fetch(`${apiUrl}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: idToken }),
+        });
+
+        if (!apiResponse.ok) {
+          const message = await apiResponse.text();
+          throw new Error(message || 'Error al registrar usuario.');
+        }
+
+        router.replace('/(tabs)' as never);
+      } catch (error: unknown) {
+        Alert.alert('Error de autenticacion', String(error));
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    void runLogin();
+  }, [apiUrl, response, router]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -36,9 +95,10 @@ export default function LoginScreen() {
         </View>
 
         <Pressable
-          style={styles.googleButton}
+          style={[styles.googleButton, isSubmitting && styles.googleButtonDisabled]}
           accessibilityRole="button"
-          onPress={() => router.replace('/(tabs)' as never)}>
+          disabled={!request || isSubmitting}
+          onPress={() => void promptAsync()}>
           <View style={styles.googleIcon}>
             <Svg width={18} height={18} viewBox="0 0 18 18" fill="none">
               <Path
@@ -59,7 +119,9 @@ export default function LoginScreen() {
               />
             </Svg>
           </View>
-          <Text style={styles.googleButtonText}>Continuar con Google</Text>
+          <Text style={styles.googleButtonText}>
+            {isSubmitting ? 'Conectando...' : 'Continuar con Google'}
+          </Text>
         </Pressable>
 
         <View style={styles.footer}>
@@ -200,6 +262,9 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
     elevation: 2,
+  },
+  googleButtonDisabled: {
+    opacity: 0.7,
   },
   googleButtonText: {
     fontSize: 16,
