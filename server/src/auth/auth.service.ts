@@ -1,6 +1,7 @@
 // src/auth/auth.service.ts
 import {
   Injectable,
+  Logger,
   OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -9,6 +10,7 @@ import { BigQuery } from '@google-cloud/bigquery';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
+  private readonly logger = new Logger(AuthService.name);
   private bigquery: BigQuery;
   private projectId: string;
   private datasetId: string;
@@ -31,18 +33,33 @@ export class AuthService implements OnModuleInit {
   }
 
   async verifyTokenAndSaveUser(clientToken: string) {
+    const user = await this.getUserProfile(clientToken);
+
     try {
-      const decodedToken = await admin.auth().verifyIdToken(clientToken);
-      const uid = decodedToken.uid;
-      const email = decodedToken.email || '';
-      const name = decodedToken.name || 'Usuario';
+      await this.saveUserToBigQuery(user.uid, user.name, user.email);
+    } catch (error: unknown) {
+      this.logger.warn(
+        `No se pudo guardar usuario en BigQuery: ${String(error)}`,
+      );
+    }
 
-      await this.saveUserToBigQuery(uid, name, email);
+    return user;
+  }
 
-      return { uid, email, name };
+  async getUserProfile(clientToken: string) {
+    let decodedToken: admin.auth.DecodedIdToken;
+
+    try {
+      decodedToken = await admin.auth().verifyIdToken(clientToken);
     } catch (error: unknown) {
       throw new UnauthorizedException(`Token inválido: ${String(error)}`);
     }
+
+    const uid = decodedToken.uid;
+    const email = decodedToken.email || '';
+    const name = decodedToken.name || 'Usuario';
+
+    return { uid, email, name };
   }
 
   private async saveUserToBigQuery(

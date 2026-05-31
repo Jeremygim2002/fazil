@@ -1,12 +1,55 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { TabsHeader } from '@/components/tabs-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { getCurrentUserProfile, getFirstName, logout } from '@/services/auth';
 
 export default function ProfileScreen() {
+  const router = useRouter();
+  const [profile, setProfile] = useState({
+    email: '',
+    name: 'Usuario',
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProfile = async () => {
+      try {
+        const userProfile = await getCurrentUserProfile();
+        if (isMounted && userProfile) {
+          setProfile({
+            email: userProfile.email,
+            name: getFirstName(userProfile.name),
+          });
+        }
+      } catch {
+        if (isMounted) {
+          setProfile({
+            email: '',
+            name: 'Usuario',
+          });
+        }
+      }
+    };
+
+    void loadProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace('/(auth)/login' as never);
+  };
+
   return (
     <ThemedView style={styles.safeArea}>
       <SafeAreaView style={styles.safeAreaInset}>
@@ -23,14 +66,11 @@ export default function ProfileScreen() {
               </View>
             </View>
             <ThemedText type="subtitle" style={styles.name}>
-              Carlos Mendez
+              {profile.name}
             </ThemedText>
             <ThemedText themeColor="textSecondary" style={styles.email}>
-              carlos@fazil.app
+              {profile.email}
             </ThemedText>
-            <View style={styles.roleBadge}>
-              <ThemedText style={styles.roleText}>Administrador</ThemedText>
-            </View>
           </ThemedView>
 
           <View style={styles.statsRow}>
@@ -77,7 +117,7 @@ export default function ProfileScreen() {
             ))}
           </ThemedView>
 
-          <Pressable style={styles.logoutButton}>
+          <Pressable style={styles.logoutButton} onPress={() => void handleLogout()}>
             <Ionicons name="log-out-outline" size={18} color="#0b3b78" />
             <ThemedText style={styles.logoutText}>Cerrar sesión</ThemedText>
           </Pressable>
@@ -139,19 +179,6 @@ const styles = StyleSheet.create({
   email: {
     marginTop: 4,
     fontSize: 14,
-  },
-  roleBadge: {
-    marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#eaf2ff',
-  },
-  roleText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0b3b78',
-    letterSpacing: 0.4,
   },
   statsRow: {
     marginTop: 16,
@@ -239,11 +266,6 @@ const styles = StyleSheet.create({
 });
 
 const profileItems = [
-  {
-    title: 'Datos personales',
-    subtitle: 'Nombre, correo y telefono',
-    icon: 'person-outline' as const,
-  },
   {
     title: 'Empresa',
     subtitle: 'RUC, actividad y direccion',

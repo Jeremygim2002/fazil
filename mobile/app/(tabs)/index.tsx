@@ -1,11 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { TabsHeader } from '@/components/tabs-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { getCurrentUserProfile, getFirstName } from '@/services/auth';
 
 const recentActivities = [
   { id: '1', invoice: 'INV-2023-089', client: 'TechCorp Supplies', amount: 'S/ 1,200.00', status: 'VALIDADO' },
@@ -15,6 +17,30 @@ const recentActivities = [
 
 export default function HomeTabScreen() {
   const router = useRouter();
+  const [firstName, setFirstName] = useState('Usuario');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProfile = async () => {
+      try {
+        const profile = await getCurrentUserProfile();
+        if (isMounted) {
+          setFirstName(getFirstName(profile?.name));
+        }
+      } catch {
+        if (isMounted) {
+          setFirstName('Usuario');
+        }
+      }
+    };
+
+    void loadProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <ThemedView style={styles.safeArea}>
@@ -23,7 +49,7 @@ export default function HomeTabScreen() {
           <TabsHeader />
           <View style={styles.hero}>
             <ThemedText type="title" style={styles.greeting}>
-              Bienvenido, Carlos
+              Bienvenido, {firstName}
             </ThemedText>
             <ThemedText themeColor="textSecondary" style={styles.subtitle}>
               Aquí está el resumen de tu negocio hoy.

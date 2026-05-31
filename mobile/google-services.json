@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "304143719817",
+    "project_id": "fazil-11f23",
+    "storage_bucket": "fazil-11f23.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:304143719817:android:165f62f7bb684b019b1558",
+        "android_client_info": {
+          "package_name": "com.fazil.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "304143719817-tsjg9dsgmrpj3279vj182709rae423us.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fazil.app",
+            "certificate_hash": "db2c594bf0c134f09007f6d5bd9dd7bd996dd189"
+          }
+        },
+        {
+          "client_id": "304143719817-9f3u23gduv3pd5rutusn4chea9db794v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB0I3cWKGBXzoiyQatNmTtpMyCXY8tAA3I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "304143719817-9f3u23gduv3pd5rutusn4chea9db794v.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

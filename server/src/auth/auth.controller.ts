@@ -1,5 +1,12 @@
 // src/auth/auth.controller.ts
-import { Controller, Post, Body } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Post,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 
@@ -13,6 +20,21 @@ export class AuthController {
     return {
       message: 'Autenticación exitosa',
       user,
+    };
+  }
+
+  @Get('me')
+  async me(@Headers('authorization') authorization?: string) {
+    const token = authorization?.startsWith('Bearer ')
+      ? authorization.slice('Bearer '.length)
+      : undefined;
+
+    if (!token) {
+      throw new UnauthorizedException('Token requerido');
+    }
+
+    return {
+      user: await this.authService.getUserProfile(token),
     };
   }
 }

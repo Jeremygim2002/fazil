@@ -1,71 +1,63 @@
-import { useRouter } from 'expo-router';
+import { makeRedirectUri } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import { auth } from '../../firebaseConfig';
+import { setPendingGoogleAuthSession } from '../../services/googleAuthSession';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
-  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const apiUrl = useMemo(
-    () => process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000',
-    [],
-  );
+  const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
+  const redirectUri = makeRedirectUri({
+    native: 'com.fazil.app:/oauthredirect',
+    scheme: 'com.fazil.app',
+    path: 'oauthredirect',
+  });
+
+  const [request, , promptAsync] = Google.useAuthRequest({
     clientId:
       process.env.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID ??
       process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
     androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    redirectUri,
     scopes: ['profile', 'email'],
   });
 
-  useEffect(() => {
-    const runLogin = async () => {
-      if (response?.type !== 'success') {
-        return;
+  const handleGoogleSignIn = async () => {
+    if (!request || isSubmitting) {
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      if (!androidClientId || !request.codeVerifier || !request.state) {
+        throw new Error('La sesion de Google no esta lista. Intenta otra vez.');
       }
 
-      const { id_token: idToken, access_token: accessToken } = response.params;
-      if (!idToken) {
-        Alert.alert('Login fallido', 'No se recibio el token de Google.');
-        return;
-      }
+      setPendingGoogleAuthSession({
+        clientId: androidClientId,
+        codeVerifier: request.codeVerifier,
+        redirectUri,
+        scopes: request.scopes,
+        state: request.state,
+      });
 
-      try {
-        setIsSubmitting(true);
-        const credential = GoogleAuthProvider.credential(idToken, accessToken);
-        await signInWithCredential(auth, credential);
-
-        const apiResponse = await fetch(`${apiUrl}/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: idToken }),
-        });
-
-        if (!apiResponse.ok) {
-          const message = await apiResponse.text();
-          throw new Error(message || 'Error al registrar usuario.');
-        }
-
-        router.replace('/(tabs)' as never);
-      } catch (error: unknown) {
-        Alert.alert('Error de autenticacion', String(error));
-      } finally {
+      const authResponse = await promptAsync({ showInRecents: true });
+      if (authResponse.type === 'cancel' || authResponse.type === 'dismiss') {
         setIsSubmitting(false);
       }
-    };
-
-    void runLogin();
-  }, [apiUrl, response, router]);
+    } catch (error: unknown) {
+      Alert.alert('Error de autenticacion', String(error));
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -100,7 +92,7 @@ export default function LoginScreen() {
           style={[styles.googleButton, isSubmitting && styles.googleButtonDisabled]}
           accessibilityRole="button"
           disabled={!request || isSubmitting}
-          onPress={() => void promptAsync()}>
+          onPress={() => void handleGoogleSignIn()}>
           <View style={styles.googleIcon}>
             <Svg width={18} height={18} viewBox="0 0 18 18" fill="none">
               <Path
