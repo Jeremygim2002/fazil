@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,16 +9,19 @@ import { TabsHeader } from '@/components/tabs-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { getCurrentUserProfile, getFirstName } from '@/services/auth';
-
-const recentActivities = [
-  { id: '1', invoice: 'INV-2023-089', client: 'TechCorp Supplies', amount: 'S/ 1,200.00', status: 'VALIDADO' },
-  { id: '2', invoice: 'INV-2023-090', client: 'Office Depot', amount: 'S/ 45.50', status: 'PENDIENTE' },
-  { id: '3', invoice: 'INV-2023-088', client: 'Marketing Agency', amount: 'S/ 3,500.00', status: 'VALIDADO' },
-];
+import {
+  formatMoney,
+  getProviderName,
+  getPurchaseDashboard,
+  getRecordTitle,
+  type PurchaseDashboard,
+  type PurchaseDashboardRecord,
+} from '@/services/dashboard';
 
 export default function HomeTabScreen() {
   const router = useRouter();
   const [firstName, setFirstName] = useState('Usuario');
+  const [dashboard, setDashboard] = useState<PurchaseDashboard | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -42,6 +46,34 @@ export default function HomeTabScreen() {
     };
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+
+      const loadDashboard = async () => {
+        try {
+          const nextDashboard = await getPurchaseDashboard();
+          if (isMounted) {
+            setDashboard(nextDashboard);
+          }
+        } catch {
+          if (isMounted) {
+            setDashboard(null);
+          }
+        }
+      };
+
+      void loadDashboard();
+
+      return () => {
+        isMounted = false;
+      };
+    }, []),
+  );
+
+  const summary = dashboard?.summary;
+  const recent = dashboard?.recent ?? [];
+
   return (
     <ThemedView style={styles.safeArea}>
       <SafeAreaView style={styles.safeAreaInset}>
@@ -52,35 +84,13 @@ export default function HomeTabScreen() {
               Bienvenido, {firstName}
             </ThemedText>
             <ThemedText themeColor="textSecondary" style={styles.subtitle}>
-              Aquí está el resumen de tu negocio hoy.
+              Aqui esta el resumen de tu negocio hoy.
             </ThemedText>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.cardsRow}>
-              <ThemedView type="backgroundElement" style={styles.statCard}>
-                <ThemedText themeColor="textSecondary" style={styles.statLabel}>
-                  GASTOS MENSUALES
-                </ThemedText>
-                <ThemedText type="subtitle" style={styles.statValue}>
-                  S/ 1,450.00
-                </ThemedText>
-                <ThemedText themeColor="textSecondary" style={styles.statHint}>
-                  ↑ 4.2% vs el mes pasado
-                </ThemedText>
-              </ThemedView>
-
-              <ThemedView type="backgroundElement" style={styles.statCardMuted}>
-                <ThemedText themeColor="textSecondary" style={styles.statLabel}>
-                  DETRACCIÓN PENDIENTE
-                </ThemedText>
-                <ThemedText type="subtitle" style={styles.statValueSmall}>
-                  S/ 1,280.00
-                </ThemedText>
-                <ThemedText style={styles.statHintDanger}>⏰ Vence hoy</ThemedText>
-              </ThemedView>
-            </ScrollView>
+            <View style={styles.cardsRow}>
+              <StatCard title="GASTOS DEL MES" value={formatMoney(summary?.totalMes)} />
+              <StatCard title="DETRACCION PENDIENTE" value={formatMoney(summary?.detraccionPendiente)} />
+            </View>
           </View>
 
           <View style={styles.captureRow}>
@@ -105,36 +115,63 @@ export default function HomeTabScreen() {
           </View>
 
           <View style={styles.activityList}>
-            {recentActivities.map((item) => (
-              <ThemedView key={item.id} type="backgroundElement" style={styles.activityRow}>
-                <View style={styles.activityIcon}>
-                  <Ionicons name="receipt-outline" size={18} color="#0b3b78" />
-                </View>
-                <View style={styles.activityBody}>
-                  <ThemedText type="smallBold" style={styles.activityInvoice}>
-                    {item.invoice}
-                  </ThemedText>
-                  <ThemedText themeColor="textSecondary" style={styles.activityClient}>
-                    {item.client}
-                  </ThemedText>
-                </View>
-                <View style={styles.activityMeta}>
-                  <ThemedText type="smallBold" style={styles.activityAmount}>
-                    {item.amount}
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.activityStatus,
-                      item.status === 'VALIDADO' ? styles.statusValidado : styles.statusPendiente,
-                    ]}>
-                    {item.status}
-                  </ThemedText>
-                </View>
+            {recent.length > 0 ? (
+              recent.map((item) => <ActivityRow key={item.transactionId} item={item} />)
+            ) : (
+              <ThemedView type="backgroundElement" style={styles.emptyCard}>
+                <ThemedText style={styles.emptyTitle}>Faltan datos</ThemedText>
+                <ThemedText themeColor="textSecondary" style={styles.emptyText}>
+                  Sube tu primer comprobante para ver actividad reciente.
+                </ThemedText>
               </ThemedView>
-            ))}
+            )}
           </View>
         </ScrollView>
       </SafeAreaView>
+    </ThemedView>
+  );
+}
+
+function StatCard({ title, value }: { title: string; value: string }) {
+  return (
+    <ThemedView type="backgroundElement" style={styles.statCard}>
+      <ThemedText themeColor="textSecondary" style={styles.statLabel}>
+        {title}
+      </ThemedText>
+      <ThemedText type="subtitle" style={styles.statValue}>
+        {value}
+      </ThemedText>
+    </ThemedView>
+  );
+}
+
+function ActivityRow({ item }: { item: PurchaseDashboardRecord }) {
+  const isValid = item.validacionEstado === 'success';
+
+  return (
+    <ThemedView type="backgroundElement" style={styles.activityRow}>
+      <View style={styles.activityIcon}>
+        <Ionicons name={isValid ? 'receipt-outline' : 'alert-circle-outline'} size={18} color={isValid ? '#0b3b78' : '#dc2626'} />
+      </View>
+      <View style={styles.activityBody}>
+        <ThemedText type="smallBold" style={styles.activityInvoice}>
+          {getRecordTitle(item)}
+        </ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.activityClient}>
+          {getProviderName(item)}
+        </ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.activityClient}>
+          Detraccion: {formatMoney(item.montoDetraccion)}
+        </ThemedText>
+      </View>
+      <View style={styles.activityMeta}>
+        <ThemedText type="smallBold" style={styles.activityAmount}>
+          {formatMoney(item.importeTotal)}
+        </ThemedText>
+        <ThemedText style={[styles.activityStatus, isValid ? styles.statusValidado : styles.statusObservado]}>
+          {isValid ? 'VALIDADO' : 'OBSERVADO'}
+        </ThemedText>
+      </View>
     </ThemedView>
   );
 }
@@ -159,26 +196,23 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   subtitle: { marginTop: 4, fontSize: 16, lineHeight: 22 },
-  cardsRow: { gap: 12, paddingTop: 20, paddingBottom: 16 },
+  cardsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingTop: 20,
+    paddingBottom: 16,
+  },
   statCard: {
-    width: 176,
+    flex: 1,
+    minHeight: 112,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: '#e5e7eb',
-  },
-  statCardMuted: {
-    width: 176,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#eef2f7',
+    justifyContent: 'center',
   },
   statLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.6 },
   statValue: { marginTop: 14, color: '#111827' },
-  statValueSmall: { marginTop: 14, color: '#111827' },
-  statHint: { marginTop: 10, fontSize: 12 },
-  statHintDanger: { marginTop: 10, fontSize: 12, color: '#dc2626', fontWeight: '600' },
   captureRow: {
     marginTop: 18,
     flexDirection: 'row',
@@ -203,7 +237,6 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   captureText: { color: '#ffffff', fontWeight: '900', fontSize: 14, letterSpacing: 1 },
-  captureLabel: { marginTop: 12, fontSize: 11, letterSpacing: 1.6, fontWeight: '700' },
   sectionHeader: { marginTop: 28, marginBottom: 12 },
   sectionTitle: { fontSize: 18, color: '#111827' },
   activityList: { gap: 12, paddingBottom: 8 },
@@ -231,5 +264,21 @@ const styles = StyleSheet.create({
   activityAmount: { fontSize: 14, color: '#0b3b78' },
   activityStatus: { marginTop: 4, fontSize: 11, fontWeight: '700' },
   statusValidado: { color: '#2563eb' },
-  statusPendiente: { color: '#f59e0b' },
+  statusObservado: { color: '#dc2626' },
+  emptyCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#eef2f7',
+    padding: 16,
+    gap: 4,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  emptyText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
 });

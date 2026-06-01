@@ -1,43 +1,55 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { TabsHeader } from '@/components/tabs-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-
-const distributionItems = [
-  { id: '1', label: 'Nómina', value: '45%', color: '#0b3b78' },
-  { id: '2', label: 'Operaciones', value: '30%', color: '#2563eb' },
-  { id: '3', label: 'Marketing', value: '15%', color: '#60a5fa' },
-  { id: '4', label: 'Otros', value: '10%', color: '#94a3b8' },
-];
-
-const topProviders = [
-  {
-    id: '1',
-    name: 'Amazon Web Services',
-    subtitle: 'Infraestructura',
-    amount: 'S/ 4,200.50',
-    count: '12 transacciones',
-  },
-  {
-    id: '2',
-    name: 'Global Ad Group',
-    subtitle: 'Marketing',
-    amount: 'S/ 2,850.00',
-    count: '3 transacciones',
-  },
-  {
-    id: '3',
-    name: 'Seguros Pacifico',
-    subtitle: 'Operaciones',
-    amount: 'S/ 1,120.00',
-    count: '1 transacción',
-  },
-];
+import {
+  formatCompactMoney,
+  formatMoney,
+  getPurchaseDashboard,
+  type PurchaseDashboard,
+  type PurchaseProviderMetric,
+} from '@/services/dashboard';
 
 export default function AnalyticsScreen() {
+  const [dashboard, setDashboard] = useState<PurchaseDashboard | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+
+      const loadDashboard = async () => {
+        try {
+          const nextDashboard = await getPurchaseDashboard();
+          if (isMounted) {
+            setDashboard(nextDashboard);
+          }
+        } catch {
+          if (isMounted) {
+            setDashboard(null);
+          }
+        }
+      };
+
+      void loadDashboard();
+
+      return () => {
+        isMounted = false;
+      };
+    }, []),
+  );
+
+  const summary = dashboard?.summary;
+  const totalComprobantes = (summary?.validados ?? 0) + (summary?.observados ?? 0);
+  const validadoPct = getPercent(summary?.validados ?? 0, totalComprobantes);
+  const observadoPct = getPercent(summary?.observados ?? 0, totalComprobantes);
+  const pendientePct = Math.max(0, 100 - validadoPct - observadoPct);
+  const bars = useMemo(() => buildBars(dashboard), [dashboard]);
+
   return (
     <ThemedView style={styles.safeArea}>
       <SafeAreaView style={styles.safeAreaInset}>
@@ -46,39 +58,21 @@ export default function AnalyticsScreen() {
 
           <View style={styles.hero}>
             <ThemedText type="title" style={styles.title}>
-              Analítica
+              Analitica
             </ThemedText>
             <ThemedText themeColor="textSecondary" style={styles.subtitle}>
               Indicadores clave y tendencias de tus comprobantes.
             </ThemedText>
           </View>
 
-          <View style={styles.kpiRow}>
-            <ThemedView type="backgroundElement" style={styles.kpiCard}>
-              <ThemedText themeColor="textSecondary" style={styles.kpiLabel}>
-                TOTAL MES
-              </ThemedText>
-              <ThemedText type="subtitle" style={styles.kpiValue}>
-                S/ 45,820
-              </ThemedText>
-              <View style={styles.kpiTrend}>
-                <Ionicons name="arrow-up" size={14} color="#16a34a" />
-                <ThemedText style={styles.kpiTrendText}>+12.4%</ThemedText>
-              </View>
-            </ThemedView>
+          <Pressable style={styles.bigQueryButton}>
+            <Ionicons name="bar-chart-outline" size={18} color="#ffffff" />
+            <ThemedText style={styles.bigQueryButtonText}>Realizar dashboard en Looker Studio-</ThemedText>
+          </Pressable>
 
-            <ThemedView type="backgroundElement" style={styles.kpiCard}>
-              <ThemedText themeColor="textSecondary" style={styles.kpiLabel}>
-                PROMEDIO
-              </ThemedText>
-              <ThemedText type="subtitle" style={styles.kpiValue}>
-                S/ 382
-              </ThemedText>
-              <View style={styles.kpiTrend}>
-                <Ionicons name="arrow-down" size={14} color="#f97316" />
-                <ThemedText style={styles.kpiTrendWarn}>-3.1%</ThemedText>
-              </View>
-            </ThemedView>
+          <View style={styles.kpiRow}>
+            <KpiCard title="TOTAL MES" value={formatCompactMoney(summary?.totalMes)} />
+            <KpiCard title="PROMEDIO" value={formatCompactMoney(summary?.promedioComprobante)} />
           </View>
 
           <ThemedView type="backgroundElement" style={styles.chartCard}>
@@ -87,98 +81,108 @@ export default function AnalyticsScreen() {
                 Flujo de comprobantes
               </ThemedText>
               <View style={styles.chartPill}>
-                <ThemedText style={styles.chartPillText}>Últimos 30 días</ThemedText>
+                <ThemedText style={styles.chartPillText}>Ultimos registros</ThemedText>
               </View>
             </View>
             <View style={styles.chartPlaceholder}>
-              <View style={[styles.chartBar, styles.chartBarTall]} />
-              <View style={[styles.chartBar, styles.chartBarMid]} />
-              <View style={[styles.chartBar, styles.chartBarShort]} />
-              <View style={[styles.chartBar, styles.chartBarHigh]} />
-              <View style={[styles.chartBar, styles.chartBarMid]} />
-              <View style={[styles.chartBar, styles.chartBarTall]} />
+              {bars.map((height, index) => (
+                <View key={`${height}-${index}`} style={[styles.chartBar, { height }]} />
+              ))}
             </View>
           </ThemedView>
 
           <View style={styles.sectionHeader}>
             <ThemedText type="smallBold" style={styles.sectionTitle}>
-              Distribución
+              Distribucion
             </ThemedText>
           </View>
 
           <ThemedView type="backgroundElement" style={styles.splitCard}>
-            <View style={styles.splitRow}>
-              <View style={styles.splitLabel}>
-                <View style={[styles.dot, styles.dotPrimary]} />
-                <ThemedText style={styles.splitText}>Validados</ThemedText>
-              </View>
-              <ThemedText style={styles.splitValue}>72%</ThemedText>
-            </View>
-            <View style={styles.splitRow}>
-              <View style={styles.splitLabel}>
-                <View style={[styles.dot, styles.dotWarning]} />
-                <ThemedText style={styles.splitText}>Pendientes</ThemedText>
-              </View>
-              <ThemedText style={styles.splitValue}>18%</ThemedText>
-            </View>
-            <View style={styles.splitRow}>
-              <View style={styles.splitLabel}>
-                <View style={[styles.dot, styles.dotMuted]} />
-                <ThemedText style={styles.splitText}>Observados</ThemedText>
-              </View>
-              <ThemedText style={styles.splitValue}>10%</ThemedText>
-            </View>
-          </ThemedView>
-
-          <ThemedView type="backgroundElement" style={styles.distributionCard}>
-            <View style={styles.distributionLeft}>
-              <View style={styles.distributionCube}>
-                <ThemedText style={styles.distributionCubeText}>100%</ThemedText>
-              </View>
-            </View>
-            <View style={styles.distributionLegend}>
-              {distributionItems.map((item) => (
-                <View key={item.id} style={styles.legendRow}>
-                  <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-                  <ThemedText style={styles.legendLabel}>{item.label}</ThemedText>
-                  <ThemedText style={styles.legendValue}>{item.value}</ThemedText>
-                </View>
-              ))}
-            </View>
+            <SplitRow label="Validados" value={`${validadoPct}%`} color="#0b3b78" />
+            <SplitRow label="Pendientes" value={`${pendientePct}%`} color="#f97316" />
+            <SplitRow label="Observados" value={`${observadoPct}%`} color="#94a3b8" />
           </ThemedView>
 
           <View style={styles.sectionHeaderRow}>
             <ThemedText type="smallBold" style={styles.sectionTitle}>
               Principales Proveedores
             </ThemedText>
-            <ThemedText style={styles.sectionLink}>Ver todos</ThemedText>
           </View>
 
           <ThemedView type="backgroundElement" style={styles.providersCard}>
-            {topProviders.map((provider) => (
-              <View key={provider.id} style={styles.providerRow}>
-                <View style={styles.providerIcon}>
-                  <Ionicons name="briefcase-outline" size={18} color="#0b3b78" />
-                </View>
-                <View style={styles.providerBody}>
-                  <ThemedText style={styles.providerName}>{provider.name}</ThemedText>
-                  <ThemedText themeColor="textSecondary" style={styles.providerSubtitle}>
-                    {provider.subtitle}
-                  </ThemedText>
-                </View>
-                <View style={styles.providerMeta}>
-                  <ThemedText style={styles.providerAmount}>{provider.amount}</ThemedText>
-                  <ThemedText themeColor="textSecondary" style={styles.providerCount}>
-                    {provider.count}
-                  </ThemedText>
-                </View>
+            {dashboard?.topProviders.length ? (
+              dashboard.topProviders.map((provider) => <ProviderRow key={provider.proveedorId} provider={provider} />)
+            ) : (
+              <View style={styles.emptyState}>
+                <ThemedText style={styles.emptyTitle}>Faltan datos</ThemedText>
+                <ThemedText themeColor="textSecondary" style={styles.emptyText}>
+                  Los proveedores apareceran cuando guardes comprobantes.
+                </ThemedText>
               </View>
-            ))}
+            )}
           </ThemedView>
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
+}
+
+function KpiCard({ title, value }: { title: string; value: string }) {
+  return (
+    <ThemedView type="backgroundElement" style={styles.kpiCard}>
+      <ThemedText themeColor="textSecondary" style={styles.kpiLabel}>
+        {title}
+      </ThemedText>
+      <ThemedText type="subtitle" style={styles.kpiValue}>
+        {value}
+      </ThemedText>
+    </ThemedView>
+  );
+}
+
+function SplitRow({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <View style={styles.splitRow}>
+      <View style={styles.splitLabel}>
+        <View style={[styles.dot, { backgroundColor: color }]} />
+        <ThemedText style={styles.splitText}>{label}</ThemedText>
+      </View>
+      <ThemedText style={styles.splitValue}>{value}</ThemedText>
+    </View>
+  );
+}
+
+function ProviderRow({ provider }: { provider: PurchaseProviderMetric }) {
+  return (
+    <View style={styles.providerRow}>
+      <View style={styles.providerIcon}>
+        <Ionicons name="briefcase-outline" size={18} color="#0b3b78" />
+      </View>
+      <View style={styles.providerBody}>
+        <ThemedText style={styles.providerName}>{provider.proveedorNombre || provider.proveedorId}</ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.providerSubtitle}>
+          {provider.comprobantes} comprobantes
+        </ThemedText>
+      </View>
+      <ThemedText style={styles.providerAmount}>{formatMoney(provider.total)}</ThemedText>
+    </View>
+  );
+}
+
+function getPercent(value: number, total: number) {
+  if (total === 0) {
+    return 0;
+  }
+
+  return Math.round((value / total) * 100);
+}
+
+function buildBars(dashboard: PurchaseDashboard | null) {
+  const values = (dashboard?.history ?? []).slice(0, 6).map((record) => record.importeTotal);
+  const maxValue = Math.max(...values, 1);
+  const bars = values.map((value) => Math.max(24, Math.round((value / maxValue) * 92)));
+
+  return bars.length > 0 ? bars : [36, 52, 28, 72, 44, 60];
 }
 
 const styles = StyleSheet.create({
@@ -206,6 +210,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
   },
+  bigQueryButton: {
+    marginTop: 16,
+    minHeight: 48,
+    borderRadius: 14,
+    backgroundColor: '#0b3b78',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  bigQueryButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
   kpiRow: {
     marginTop: 18,
     flexDirection: 'row',
@@ -213,10 +233,12 @@ const styles = StyleSheet.create({
   },
   kpiCard: {
     flex: 1,
+    minHeight: 116,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
     borderColor: '#eef2f7',
+    justifyContent: 'center',
   },
   kpiLabel: {
     fontSize: 11,
@@ -226,22 +248,6 @@ const styles = StyleSheet.create({
   kpiValue: {
     marginTop: 10,
     color: '#111827',
-  },
-  kpiTrend: {
-    marginTop: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  kpiTrendText: {
-    color: '#16a34a',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  kpiTrendWarn: {
-    color: '#f97316',
-    fontSize: 12,
-    fontWeight: '700',
   },
   chartCard: {
     marginTop: 18,
@@ -285,12 +291,8 @@ const styles = StyleSheet.create({
     width: 16,
     borderRadius: 8,
     backgroundColor: '#0b3b78',
-    opacity: 0.15,
+    opacity: 0.18,
   },
-  chartBarShort: { height: 32 },
-  chartBarMid: { height: 56 },
-  chartBarTall: { height: 82 },
-  chartBarHigh: { height: 96 },
   sectionHeader: {
     marginTop: 18,
     marginBottom: 8,
@@ -327,83 +329,9 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
-  dotPrimary: {
-    backgroundColor: '#0b3b78',
-  },
-  dotWarning: {
-    backgroundColor: '#f97316',
-  },
-  dotMuted: {
-    backgroundColor: '#94a3b8',
-  },
-  distributionCard: {
-    marginTop: 12,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#eef2f7',
-    flexDirection: 'row',
-    gap: 16,
-    alignItems: 'center',
-  },
-  distributionLeft: {
-    width: 84,
-    height: 84,
-    borderRadius: 14,
-    backgroundColor: '#f8fafc',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  distributionCube: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
-    backgroundColor: '#111827',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  distributionCubeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
-  distributionLegend: {
-    flex: 1,
-    gap: 6,
-  },
-  legendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendLabel: {
-    flex: 1,
-    fontSize: 13,
-    color: '#111827',
-  },
-  legendValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0b3b78',
-  },
   sectionHeaderRow: {
     marginTop: 18,
     marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sectionLink: {
-    fontSize: 12,
-    color: '#2563eb',
-    fontWeight: '700',
   },
   providersCard: {
     borderRadius: 16,
@@ -440,16 +368,21 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
   },
-  providerMeta: {
-    alignItems: 'flex-end',
-  },
   providerAmount: {
     fontSize: 13,
     fontWeight: '800',
     color: '#0b3b78',
   },
-  providerCount: {
-    marginTop: 2,
-    fontSize: 11,
+  emptyState: {
+    padding: 18,
+    gap: 4,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  emptyText: {
+    fontSize: 13,
   },
 });

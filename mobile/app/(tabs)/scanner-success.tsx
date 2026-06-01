@@ -1,15 +1,50 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ComponentProps, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActionButton } from '@/components/action-button';
 import { TabsHeader } from '@/components/tabs-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import {
+  clearPendingPurchaseValidation,
+  clonePurchaseValidationWithNewTransaction,
+  getPendingPurchaseValidation,
+} from '@/services/extracted-document-store';
+import { savePurchaseValidation } from '@/services/purchases';
+
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export default function ScannerSuccessScreen() {
   const router = useRouter();
+  const [validation] = useState(() => getPendingPurchaseValidation());
+  const [isSaving, setIsSaving] = useState(false);
+  const document = validation?.document;
+
+  const handleSave = async () => {
+    if (isSaving) {
+      return;
+    }
+
+    if (!validation) {
+      Alert.alert('Sin comprobante', 'No hay datos listos para guardar.');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const response = await savePurchaseValidation(clonePurchaseValidationWithNewTransaction(validation));
+      clearPendingPurchaseValidation();
+      Alert.alert('Guardado', `Comprobante guardado en BigQuery: ${response.transactionId}`);
+      router.replace('/(tabs)' as never);
+    } catch (error) {
+      Alert.alert('No se pudo guardar', getErrorMessage(error));
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <ThemedView style={styles.safeArea}>
@@ -19,7 +54,7 @@ export default function ScannerSuccessScreen() {
 
           <View style={styles.titleRow}>
             <ThemedText type="subtitle" style={styles.title}>
-              Detalles de Transacción
+              Comprobante Validado
             </ThemedText>
           </View>
 
@@ -27,36 +62,49 @@ export default function ScannerSuccessScreen() {
             <ThemedText themeColor="textSecondary" style={styles.heroLabel}>
               MONTO TOTAL
             </ThemedText>
-            <ThemedText style={styles.heroAmount}>S/1,245.50</ThemedText>
+            <ThemedText style={styles.heroAmount}>{formatMoney(document?.total)}</ThemedText>
 
             <View style={styles.confidencePill}>
-              <Ionicons name="checkmark-circle-outline" size={18} color="#172554" />
-              <ThemedText style={styles.confidenceText}>Confianza de IA: 98%</ThemedText>
+              <Ionicons name="checkmark-circle-outline" size={18} color="#166534" />
+              <ThemedText style={styles.confidenceText}>{formatConfidence(validation?.confidence)}</ThemedText>
             </View>
           </ThemedView>
 
           <ThemedView type="backgroundElement" style={styles.detailsCard}>
             <ThemedText type="smallBold" style={styles.detailsTitle}>
-              Metadatos Técnicos
+              Datos Confirmados
             </ThemedText>
 
-            <DetailRow label="ID de Transacción" value="TXN-8472-991A-B4C2" icon="pricetag-outline" />
-            <DetailRow label="Sincronización BigQuery" value="2023-10-27T14:32:01Z" icon="sync-outline" />
-            <DetailRow label="Número de Constancia Fiscal" value="TCN-DE-482910" icon="document-text-outline" />
+            <DetailRow label="Transaccion" value="Se generara al guardar" icon="pricetag-outline" />
+            <DetailRow label="RUC Emisor" value={document?.ruc || '-'} icon="business-outline" />
+            <DetailRow label="Proveedor" value={document?.sunat?.razonSocial || '-'} icon="storefront-outline" />
+            <DetailRow label="Factura" value={document?.invoiceNumber || '-'} icon="document-text-outline" />
+            <DetailRow label="Fecha" value={document?.issueDate || '-'} icon="calendar-outline" />
+            <DetailRow label="Sede" value={document?.sedeNombre || '-'} icon="business-outline" />
+            <DetailRow label="Ubicacion" value={document?.ubicacion || '-'} icon="map-outline" />
+            <DetailRow
+              label="Tipo de Detraccion"
+              value={formatDetractionType(document?.detractionTypeId, document?.detractionDescription)}
+              icon="receipt-outline"
+            />
+            <DetailRow label="SUNAT" value={document?.sunat?.estado ?? 'Pendiente'} icon="shield-checkmark-outline" />
+            <DetailRow label="Condicion" value={document?.sunat?.condicion ?? 'Pendiente'} icon="location-outline" />
           </ThemedView>
 
           <ActionButton
-            label="Ver Imagen Original"
-            variant="secondary"
-            icon={<Ionicons name="image-outline" size={18} color="#0f172a" />}
-            style={styles.secondaryButton}
+            label={isSaving ? 'Guardando...' : 'Guardar en BigQuery'}
+            icon={<Ionicons name="cloud-upload-outline" size={18} color="#ffffff" />}
+            onPress={handleSave}
+            disabled={isSaving}
+            style={styles.primaryButton}
           />
 
           <ActionButton
             label="Volver al Inicio"
-            icon={<Ionicons name="home-outline" size={18} color="#ffffff" />}
+            variant="secondary"
+            icon={<Ionicons name="home-outline" size={18} color="#0f172a" />}
             onPress={() => router.replace('/(tabs)' as never)}
-            style={styles.primaryButton}
+            style={styles.secondaryButton}
           />
         </ScrollView>
       </SafeAreaView>
@@ -64,16 +112,32 @@ export default function ScannerSuccessScreen() {
   );
 }
 
-function DetailRow({ label, value, icon }: { label: string; value: string; icon: string }) {
+function DetailRow({ label, value, icon }: { label: string; value: string; icon: IoniconName }) {
   return (
     <View style={styles.detailRow}>
       <View style={styles.detailHeading}>
-        <Ionicons name={icon as any} size={18} color="#64748b" />
+        <Ionicons name={icon} size={18} color="#64748b" />
         <ThemedText style={styles.detailLabel}>{label}</ThemedText>
       </View>
       <ThemedText style={styles.detailValue}>{value}</ThemedText>
     </View>
   );
+}
+
+function formatMoney(value?: number | null) {
+  return typeof value === 'number' ? `S/ ${value.toFixed(2)}` : 'S/ -';
+}
+
+function formatConfidence(value?: number | null) {
+  return typeof value === 'number' ? `Confianza de IA: ${Math.round(value * 100)}%` : 'Confianza de IA: sin dato';
+}
+
+function formatDetractionType(id?: string | null, description?: string | null) {
+  return [id, description].filter(Boolean).join(' - ') || '-';
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Intenta nuevamente.';
 }
 
 const styles = StyleSheet.create({
@@ -100,7 +164,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: '#bbf7d0',
+    backgroundColor: '#f0fdf4',
   },
   heroLabel: {
     fontSize: 14,
@@ -115,8 +180,8 @@ const styles = StyleSheet.create({
   confidencePill: {
     marginTop: 4,
     borderWidth: 1,
-    borderColor: '#bfdbfe',
-    backgroundColor: '#eff6ff',
+    borderColor: '#86efac',
+    backgroundColor: '#dcfce7',
     borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -125,7 +190,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   confidenceText: {
-    color: '#172554',
+    color: '#166534',
     fontWeight: '800',
     fontSize: 13,
   },
@@ -161,11 +226,11 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     fontWeight: '700',
   },
-  secondaryButton: {
+  primaryButton: {
     marginTop: 18,
     alignSelf: 'stretch',
   },
-  primaryButton: {
+  secondaryButton: {
     marginTop: 14,
     alignSelf: 'stretch',
   },

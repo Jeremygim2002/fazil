@@ -5,8 +5,15 @@ import {
   OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
-import * as admin from 'firebase-admin';
+import { applicationDefault, getApps, initializeApp } from 'firebase-admin/app';
+import { DecodedIdToken, getAuth } from 'firebase-admin/auth';
 import { BigQuery } from '@google-cloud/bigquery';
+
+type AuthUserProfile = {
+  uid: string;
+  email: string;
+  name: string;
+};
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -17,9 +24,9 @@ export class AuthService implements OnModuleInit {
   private userTable: string;
 
   onModuleInit() {
-    if (!admin.apps.length) {
-      admin.initializeApp({
-        credential: admin.credential.applicationDefault(),
+    if (!getApps().length) {
+      initializeApp({
+        credential: applicationDefault(),
       });
     }
 
@@ -32,7 +39,7 @@ export class AuthService implements OnModuleInit {
     });
   }
 
-  async verifyTokenAndSaveUser(clientToken: string) {
+  async verifyTokenAndSaveUser(clientToken: string): Promise<AuthUserProfile> {
     const user = await this.getUserProfile(clientToken);
 
     try {
@@ -46,18 +53,20 @@ export class AuthService implements OnModuleInit {
     return user;
   }
 
-  async getUserProfile(clientToken: string) {
-    let decodedToken: admin.auth.DecodedIdToken;
+  async getUserProfile(clientToken: string): Promise<AuthUserProfile> {
+    let decodedToken: DecodedIdToken;
 
     try {
-      decodedToken = await admin.auth().verifyIdToken(clientToken);
+      decodedToken = await getAuth().verifyIdToken(clientToken);
     } catch (error: unknown) {
       throw new UnauthorizedException(`Token inválido: ${String(error)}`);
     }
 
-    const uid = decodedToken.uid;
-    const email = decodedToken.email || '';
-    const name = decodedToken.name || 'Usuario';
+    const uid = String(decodedToken.uid);
+    const email =
+      typeof decodedToken.email === 'string' ? decodedToken.email : '';
+    const name =
+      typeof decodedToken.name === 'string' ? decodedToken.name : 'Usuario';
 
     return { uid, email, name };
   }

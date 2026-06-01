@@ -1,21 +1,49 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActionButton } from '@/components/action-button';
 import { TabsHeader } from '@/components/tabs-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import {
+  clearPendingPurchaseValidation,
+  clonePurchaseValidationWithNewTransaction,
+  getPendingPurchaseValidation,
+} from '@/services/extracted-document-store';
+import { savePurchaseValidation } from '@/services/purchases';
 
 export default function ScannerErrorScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ reasons?: string; detractionType?: string; sunatStatus?: string; issueDate?: string }>();
+  const [validation] = useState(() => getPendingPurchaseValidation());
+  const [isSaving, setIsSaving] = useState(false);
+  const document = validation?.document;
+  const reasons = validation?.reasons ?? [];
 
-  const reasons = (params.reasons ?? '')
-    .split('|')
-    .map((reason) => reason.trim())
-    .filter(Boolean);
+  const handleSaveWithErrors = async () => {
+    if (isSaving) {
+      return;
+    }
+
+    if (!validation) {
+      Alert.alert('Sin comprobante', 'No hay datos listos para guardar.');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const response = await savePurchaseValidation(clonePurchaseValidationWithNewTransaction(validation));
+      clearPendingPurchaseValidation();
+      Alert.alert('Guardado', `Comprobante guardado con observaciones: ${response.transactionId}`);
+      router.replace('/(tabs)' as never);
+    } catch (error) {
+      Alert.alert('No se pudo guardar', getErrorMessage(error));
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <ThemedView style={styles.safeArea}>
@@ -25,7 +53,7 @@ export default function ScannerErrorScreen() {
 
           <View style={styles.titleRow}>
             <ThemedText type="subtitle" style={styles.title}>
-              Resolución de Incidencia
+              Resolucion de Incidencia
             </ThemedText>
           </View>
 
@@ -33,20 +61,28 @@ export default function ScannerErrorScreen() {
             <Ionicons name="warning" size={24} color="#b91c1c" />
             <View style={styles.alertCopy}>
               <ThemedText style={styles.alertTitle}>Incidencia Detectada</ThemedText>
-              <ThemedText style={styles.alertText}>Fecha Expirada, Empresa No Habida o Detracción inválida.</ThemedText>
+              <ThemedText style={styles.alertText}>Corrige el comprobante o guardalo con observaciones.</ThemedText>
             </View>
           </View>
 
           <ThemedView type="backgroundElement" style={styles.detailsCard}>
             <ThemedText type="smallBold" style={styles.detailsTitle}>
-              Datos Extraídos
+              Datos Revisados
             </ThemedText>
 
-            <DetailRow label="RUC Emisor" value="20100047218" />
-            <DetailRow label="Monto Total" value="S/ 450.50" />
-            <DetailRow label="Fecha de Emisión" value={params.issueDate ?? 'Sin definir'} danger />
-            <DetailRow label="Tipo de Detracción" value={params.detractionType ?? 'Sin definir'} />
-            <DetailRow label="Estado SUNAT" value={params.sunatStatus ?? 'Sin definir'} />
+            <DetailRow label="Transaccion" value="Se generara al guardar" />
+            <DetailRow label="RUC Emisor" value={document?.ruc || '-'} />
+            <DetailRow label="Proveedor" value={document?.sunat?.razonSocial || '-'} />
+            <DetailRow label="Monto Total" value={formatMoney(document?.total)} />
+            <DetailRow label="Fecha de Emision" value={document?.issueDate ?? '-'} danger />
+            <DetailRow label="Sede" value={document?.sedeNombre || '-'} />
+            <DetailRow label="Ubicacion" value={document?.ubicacion || '-'} />
+            <DetailRow
+              label="Tipo de Detraccion"
+              value={formatDetractionType(document?.detractionTypeId, document?.detractionDescription)}
+            />
+            <DetailRow label="SUNAT" value={document?.sunat?.estado ?? 'Pendiente'} />
+            <DetailRow label="Condicion" value={document?.sunat?.condicion ?? 'Pendiente'} danger={document?.sunat?.isHabido === false} />
           </ThemedView>
 
           <View style={styles.reasonList}>
@@ -61,25 +97,19 @@ export default function ScannerErrorScreen() {
           </View>
 
           <ActionButton
-            label="Volver a Escanear"
-            variant="secondary"
-            icon={<Ionicons name="camera-outline" size={18} color="#0f172a" />}
-            onPress={() => router.push('/scanner' as never)}
-            style={styles.secondaryButton}
-          />
-
-          <ActionButton
             label="Editar Manualmente"
             variant="secondary"
             icon={<Ionicons name="create-outline" size={18} color="#0f172a" />}
             onPress={() => router.push('/scanner-form' as never)}
+            disabled={isSaving}
             style={styles.secondaryButton}
           />
 
           <ActionButton
-            label="Re-validar Documento"
-            icon={<Ionicons name="refresh-circle-outline" size={18} color="#ffffff" />}
-            onPress={() => router.push('/scanner-form' as never)}
+            label={isSaving ? 'Guardando...' : 'Guardar con Observaciones'}
+            icon={<Ionicons name="cloud-upload-outline" size={18} color="#ffffff" />}
+            onPress={handleSaveWithErrors}
+            disabled={isSaving}
             style={styles.primaryButton}
           />
         </ScrollView>
@@ -105,6 +135,18 @@ function DetailRow({
       <ThemedText style={[styles.detailValue, danger ? styles.detailValueDanger : null]}>{value}</ThemedText>
     </View>
   );
+}
+
+function formatMoney(value?: number | null) {
+  return typeof value === 'number' ? `S/ ${value.toFixed(2)}` : 'S/ -';
+}
+
+function formatDetractionType(id?: string | null, description?: string | null) {
+  return [id, description].filter(Boolean).join(' - ') || '-';
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Intenta nuevamente.';
 }
 
 const styles = StyleSheet.create({

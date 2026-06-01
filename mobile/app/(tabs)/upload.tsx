@@ -1,15 +1,56 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActionButton } from '@/components/action-button';
 import { TabsHeader } from '@/components/tabs-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { extractInvoiceDocument } from '@/services/documents';
+import {
+  clearPendingExtractedDocument,
+  clearPendingPurchaseValidation,
+  setPendingExtractedDocument,
+} from '@/services/extracted-document-store';
 
 export default function UploadScreen() {
   const router = useRouter();
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handlePickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/jpeg', 'image/png'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const asset = result.assets[0];
+
+      if (!asset) {
+        Alert.alert('Archivo no encontrado', 'No se pudo leer el archivo seleccionado.');
+        return;
+      }
+
+      clearPendingExtractedDocument();
+      clearPendingPurchaseValidation();
+      setIsProcessing(true);
+      const extractedDocument = await extractInvoiceDocument(asset);
+      setPendingExtractedDocument(extractedDocument);
+      router.push('/scanner-form');
+    } catch (error) {
+      Alert.alert('No se pudo procesar', getErrorMessage(error));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   return (
     <ThemedView style={styles.safeArea}>
@@ -28,31 +69,25 @@ export default function UploadScreen() {
               Sube una foto o archivo del comprobante y luego valida la información en el mismo formulario.
             </ThemedText>
             <ActionButton
-              label="Seleccionar archivo"
+              label={isProcessing ? 'Procesando...' : 'Seleccionar archivo'}
               icon={<Ionicons name="image-outline" size={18} color="#ffffff" />}
+              disabled={isProcessing}
+              onPress={handlePickDocument}
               style={styles.uploadButton}
             />
           </ThemedView>
-
-          <ThemedView type="backgroundElement" style={styles.infoCard}>
-            <ThemedText type="smallBold" style={styles.infoTitle}>
-              Mismo formulario de validación
-            </ThemedText>
-            <ThemedText themeColor="textSecondary" style={styles.infoText}>
-              Después de subir el comprobante vas a revisar RUC, factura, fecha, subtotal e IGV en la misma pantalla que usa la cámara.
-            </ThemedText>
-          </ThemedView>
-
-          <ActionButton
-            label="Continuar"
-            icon={<Ionicons name="arrow-forward" size={18} color="#ffffff" />}
-            onPress={() => router.push('/scanner-form')}
-            style={styles.primaryButton}
-          />
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return 'Intenta nuevamente con un PDF o imagen del comprobante.';
 }
 
 const styles = StyleSheet.create({

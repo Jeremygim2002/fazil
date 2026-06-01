@@ -7,6 +7,7 @@ import { ActionButton } from '@/components/action-button';
 import { TabsHeader } from '@/components/tabs-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { clearPendingExtractedDocument, clearPendingPurchaseValidation } from '@/services/extracted-document-store';
 
 export default function ScannerScreen() {
   const router = useRouter();
@@ -30,7 +31,11 @@ export default function ScannerScreen() {
             <ActionButton
               label="Siguiente"
               icon={<Ionicons name="arrow-forward" size={18} color="#ffffff" />}
-              onPress={() => router.push('/scanner-form')}
+              onPress={() => {
+                clearPendingExtractedDocument();
+                clearPendingPurchaseValidation();
+                router.push('/scanner-form');
+              }}
               style={styles.primaryButton}
             />
           </ThemedView>
