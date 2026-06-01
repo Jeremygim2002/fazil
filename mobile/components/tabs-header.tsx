@@ -12,9 +12,6 @@ export function TabsHeader() {
     <ThemedView
       style={[styles.container, { paddingTop: Math.max(insets.top - 50, 4) }]}>
       <ThemedText style={styles.brand}>FAZIL</ThemedText>
-      <View style={styles.avatar}>
-        <Ionicons name="person" size={25} color="#0b3b78" />
-      </View>
     </ThemedView>
   );
 }

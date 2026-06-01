@@ -70,7 +70,6 @@ export default function LoginScreen() {
 
         <View style={styles.header}>
           <Text style={styles.brand}>Fazil</Text>
-          <Text style={styles.subtitle}>Arquitectura inteligente para tus finanzas</Text>
         </View>
 
         <View style={styles.heroCard}>
@@ -81,10 +80,9 @@ export default function LoginScreen() {
             </View>
           </View>
 
-          <Text style={styles.title}>Inicia sesion</Text>
+          <Text style={styles.title}>Inicia sesión</Text>
           <Text style={styles.description}>
-            Accede con Google para empezar a sincronizar y revisar tus comprobantes desde el
-            primer momento.
+            Accede con Google para empezar a sincronizar y revisar tus comprobantes de compra
           </Text>
         </View>
 
@@ -117,13 +115,6 @@ export default function LoginScreen() {
             {isSubmitting ? 'Conectando...' : 'Continuar con Google'}
           </Text>
         </Pressable>
-
-        <View style={styles.footer}>
-          <View style={styles.footerBadge}>
-            <Text style={styles.footerBadgeText}>GCP</Text>
-          </View>
-          <Text style={styles.footerText}>Desarrollado por Google Cloud Platform</Text>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );

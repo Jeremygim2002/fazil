@@ -63,11 +63,6 @@ export default function ScannerSuccessScreen() {
               MONTO TOTAL
             </ThemedText>
             <ThemedText style={styles.heroAmount}>{formatMoney(document?.total)}</ThemedText>
-
-            <View style={styles.confidencePill}>
-              <Ionicons name="checkmark-circle-outline" size={18} color="#166534" />
-              <ThemedText style={styles.confidenceText}>{formatConfidence(validation?.confidence)}</ThemedText>
-            </View>
           </ThemedView>
 
           <ThemedView type="backgroundElement" style={styles.detailsCard}>
@@ -128,9 +123,6 @@ function formatMoney(value?: number | null) {
   return typeof value === 'number' ? `S/ ${value.toFixed(2)}` : 'S/ -';
 }
 
-function formatConfidence(value?: number | null) {
-  return typeof value === 'number' ? `Confianza de IA: ${Math.round(value * 100)}%` : 'Confianza de IA: sin dato';
-}
 
 function formatDetractionType(id?: string | null, description?: string | null) {
   return [id, description].filter(Boolean).join(' - ') || '-';
